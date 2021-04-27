@@ -2,18 +2,66 @@ package it.lucaneg.callgraph;
 
 import java.io.IOException;
 
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
+
 public class Runner {
-	public static void main(String[] args) throws IOException {
-		CallGraphExplorer explorer = new CallGraphExplorer();
+
+	private static final Option INPUT;
+	private static final Option OUTPUT;
+
+	static {
+		INPUT = Option.builder("i").longOpt("input").hasArg()
+				.desc("add a jar file to be analyzed").build();
+		OUTPUT = Option.builder("o").longOpt("output").hasArg().desc("name of the output dot graph").required().build();
+	}
+
+	private static CommandLine cmdLine;
+
+	public static void main(String[] args) {
+		Options options = buildOptions();
 		try {
-			explorer.addJarEntries(args[0]);
-		} catch (IOException e) {
-			System.err.println("Unable to open " + args[0]);
-			System.err.println(e);
+			cmdLine = new DefaultParser().parse(options, args);
+
+			if (!cmdLine.hasOption(INPUT.getOpt())) {
+				System.out.println("No input jar provided with -" + INPUT.getOpt() + ", skipping execution");
+				return;
+			}
+
+			CallGraphExplorer explorer = new CallGraphExplorer();
+			for (String in : cmdLine.getOptionValues(INPUT.getOpt()))
+				try {
+					explorer.addJarEntries(in);
+				} catch (IOException e) {
+					System.err.println("Unable to open " + in);
+					System.err.println(e);
+				}
+
+			explorer.computeCallingChains();
+
+			new DotDumper(explorer).dump(cmdLine.getOptionValue(OUTPUT.getOpt()), true);
+		} catch (ParseException e) {
+			printUsage(options);
+			System.err.println(e.getMessage());
+		} catch (Exception e) {
+			System.err.println("Exception during execution of the callgraph extractor:\n" + e.getMessage() + "\n");
+			e.printStackTrace(System.err);
 		}
+	}
 
-		explorer.computeCallingChains();
+	private static void printUsage(Options options) {
+		HelpFormatter hf = new HelpFormatter();
+		hf.printHelp(Runner.class.getSimpleName(), options);
+	}
 
-		new DotDumper(explorer).dump(args[1], true);
+	private static Options buildOptions() {
+		Options result = new Options();
+		result.addOption(INPUT);
+		result.addOption(OUTPUT);
+		return result;
 	}
 }
