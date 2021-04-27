@@ -51,6 +51,12 @@ public class MethodMetadata {
 	public Collection<MethodMetadata> getUnresolvedCallees() {
 		return unresolvedCallees;
 	}
+	
+	public Collection<MethodMetadata> getAllCallees() {
+		Collection<MethodMetadata> all = new HashSet<>(callees);
+		all.addAll(unresolvedCallees);
+		return all;
+	}
 
 	@Override
 	public int hashCode() {

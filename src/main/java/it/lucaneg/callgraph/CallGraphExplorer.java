@@ -45,11 +45,15 @@ public class CallGraphExplorer {
 
 	private Map<String, MethodMetadata> methods = new HashMap<>();
 
-	public Collection<MethodMetadata> getEntryPointMethods() {
+	public Collection<MethodMetadata> getEntryPointMethods(boolean excludeUnresolved) {
 		return methods.values()
 				.stream()
-				.filter(m -> m.getCallers().isEmpty() && !m.isUnresolved())
+				.filter(m -> isEntry(excludeUnresolved, m))
 				.collect(Collectors.toList());
+	}
+
+	private boolean isEntry(boolean excludeUnresolved, MethodMetadata m) {
+		return m.getCallers().isEmpty() && (!excludeUnresolved && !m.isUnresolved());
 	}
 
 	public void computeCallingChains() {
@@ -97,7 +101,8 @@ public class CallGraphExplorer {
 							target = signature(recType, name, pars, returnType);
 						}
 
-						MethodMetadata targetMetadata = methods.computeIfAbsent(target, s -> new MethodMetadata(s));
+						boolean unres = unresolved;
+						MethodMetadata targetMetadata = methods.computeIfAbsent(target, s -> new MethodMetadata(s, unres));
 						targetMetadata.getCallers().add(metadata);
 						if (unresolved)
 							metadata.getUnresolvedCallees().add(targetMetadata);
