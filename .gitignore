@@ -1,5 +1,6 @@
-# Created by https://www.toptal.com/developers/gitignore/api/eclipse,java
-# Edit at https://www.toptal.com/developers/gitignore?templates=eclipse,java
+
+# Created by https://www.toptal.com/developers/gitignore/api/java,eclipse,gradle
+# Edit at https://www.toptal.com/developers/gitignore?templates=java,eclipse,gradle
 
 ### Eclipse ###
 .metadata
@@ -17,7 +18,7 @@ local.properties
 # External tool builders
 .externalToolBuilders/
 
-# Locally stored Eclipse launch configurations
+# Locally stored "Eclipse launch configurations"
 *.launch
 
 # PyDev specific (Python IDE for Eclipse)
@@ -92,5 +93,25 @@ local.properties
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 
-# End of https://www.toptal.com/developers/gitignore/api/eclipse,java
-*.dot # generated dotfiles
+### Gradle ###
+.gradle
+build/
+
+# Ignore Gradle GUI config
+gradle-app.setting
+
+# Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
+!gradle-wrapper.jar
+
+# Cache of project
+.gradletasknamecache
+
+# # Work around https://youtrack.jetbrains.com/issue/IDEA-116898
+# gradle/wrapper/gradle-wrapper.properties
+
+### Gradle Patch ###
+**/build/
+
+# End of https://www.toptal.com/developers/gitignore/api/java,eclipse,gradle
+
+*.dot
