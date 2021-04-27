@@ -53,7 +53,7 @@ public class CallGraphExplorer {
 	}
 
 	private boolean isEntry(boolean excludeUnresolved, MethodMetadata m) {
-		return m.getCallers().isEmpty() && (!excludeUnresolved && !m.isUnresolved());
+		return m.getCallers().isEmpty() && (!excludeUnresolved || !m.isUnresolved());
 	}
 
 	public void computeCallingChains() {
@@ -67,7 +67,13 @@ public class CallGraphExplorer {
 			for (Method m : clazz.getMethods()) {
 				ConstantPoolGen cp = new ConstantPoolGen(m.getConstantPool());
 				MethodGen method = new MethodGen(m, clazz.getClassName(), cp);
-				MethodMetadata metadata = methods.computeIfAbsent(signature(method), s -> new MethodMetadata(s));
+				Type[] args = m.getArgumentTypes();
+				String[] params = new String[args.length];
+				for (int i = 0; i < params.length; i++)
+					params[i] = Utility.signatureToString(args[i].getSignature(), false);
+				MethodMetadata metadata = new MethodMetadata(signature(method), clazz.getClassName(), m.getName(),
+						Utility.signatureToString(m.getReturnType().getSignature(), false), params);
+				metadata = put(metadata);
 
 				if (method.isAbstract() || method.isNative() || method.isInterface())
 					continue;
@@ -77,13 +83,17 @@ public class CallGraphExplorer {
 						InvokeInstruction invoke = (InvokeInstruction) handle.getInstruction();
 
 						boolean unresolved = false;
-						String target;
+						MethodMetadata targetMetadata;
 						if (invoke instanceof INVOKEDYNAMIC) {
 							INVOKEDYNAMIC call = (INVOKEDYNAMIC) invoke;
 							ConstantInvokeDynamic id = (ConstantInvokeDynamic) cp.getConstant(call.getIndex());
 
 							int index = id.getBootstrapMethodAttrIndex();
-							target = infos.get(index).getSignature();
+							LambdaInfo info = infos.get(index);
+							targetMetadata = new MethodMetadata(info.getSignature(), info.getTargetClass(),
+									info.getTargetName(),
+									Utility.methodSignatureReturnType(info.getTargetSignature(), false),
+									Utility.methodSignatureArgumentTypes(info.getTargetSignature(), false));
 						} else {
 							String name = invoke.getName(cp);
 							Type[] pars = invoke.getArgumentTypes(cp);
@@ -98,11 +108,14 @@ public class CallGraphExplorer {
 							if (!classes.containsKey(Utility.signatureToString(recType.getSignature(), false)))
 								unresolved = true;
 
-							target = signature(recType, name, pars, returnType);
+							String sig = invoke.getSignature(cp);
+							targetMetadata = new MethodMetadata(signature(recType, name, pars, returnType),
+									Utility.signatureToString(recType.getSignature(), false), name,
+									Utility.methodSignatureReturnType(sig, false),
+									Utility.methodSignatureArgumentTypes(sig, false), unresolved);
 						}
 
-						boolean unres = unresolved;
-						MethodMetadata targetMetadata = methods.computeIfAbsent(target, s -> new MethodMetadata(s, unres));
+						targetMetadata = put(targetMetadata);
 						targetMetadata.getCallers().add(metadata);
 						if (unresolved)
 							metadata.getUnresolvedCallees().add(targetMetadata);
@@ -114,6 +127,13 @@ public class CallGraphExplorer {
 
 		if (dynamics != 0)
 			System.out.println("Skipped " + dynamics + " invokedynamic statements");
+	}
+
+	private MethodMetadata put(MethodMetadata targetMetadata) {
+		MethodMetadata ret = methods.putIfAbsent(targetMetadata.getSignature(), targetMetadata);
+		if (ret == null)
+			ret = targetMetadata;
+		return ret;
 	}
 
 	private final static String LAMBDA_FACTORY_CLASS = "java/lang/invoke/LambdaMetafactory";
@@ -148,7 +168,9 @@ public class CallGraphExplorer {
 							ConstantNameAndType nameAndType = (ConstantNameAndType) cpg
 									.getConstant(cpentry.getNameAndTypeIndex());
 
-							infos.add(new LambdaInfo(nameAndType.getName(cp), Utility.signatureToString("L" + cpclass + ";", false), nameAndType.getSignature(cp)));
+							infos.add(new LambdaInfo(nameAndType.getName(cp),
+									Utility.signatureToString("L" + cpclass + ";", false),
+									nameAndType.getSignature(cp)));
 						} else {
 							skipped.incrementAndGet();
 							continue;
@@ -184,6 +206,18 @@ public class CallGraphExplorer {
 			this.targetName = targetName;
 			this.targetClass = targetClass;
 			this.targetSignature = targetSignature;
+		}
+
+		public String getTargetName() {
+			return targetName;
+		}
+
+		public String getTargetClass() {
+			return targetClass;
+		}
+
+		public String getTargetSignature() {
+			return targetSignature;
 		}
 
 		public String getSignature() {

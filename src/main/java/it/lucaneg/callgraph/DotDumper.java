@@ -21,10 +21,13 @@ public class DotDumper {
 	private final Map<String, Integer> ids = new HashMap<>();
 
 	private final boolean excludeUnresolved;
+	
+	private final boolean chop;
 
-	public DotDumper(CallGraphExplorer explorer, boolean excludeUnresolved) {
+	public DotDumper(CallGraphExplorer explorer, boolean excludeUnresolved, boolean chop) {
 		this.excludeUnresolved = excludeUnresolved;
-		Collection<MethodMetadata> start = explorer.getEntryPointMethods(excludeUnresolved);
+		this.chop = chop;
+		Collection<MethodMetadata> start = explorer.getEntryPointMethods(excludeUnresolved); 
 		if (!start.isEmpty())
 			workingSet.addAll(start);
 	}
@@ -59,7 +62,7 @@ public class DotDumper {
 	}
 
 	private void dumpMethod(MethodMetadata method) throws IOException {
-		file.write(nameInDotFile(method) + " [" + getLabelFor(method) + "\"];\n");
+		file.write(nameInDotFile(method) + " [" + getLabelFor(method) + "];\n");
 	}
 
 	private void dumpArcsLeaving(MethodMetadata method) throws IOException {
@@ -76,7 +79,8 @@ public class DotDumper {
 	}
 
 	private String getLabelFor(MethodMetadata method) {
-		return "shape = box, label = \"" + method.getReadableSignature();
+		return "shape = box, label = <" + (method.isUnresolved() ? "[open] " : "")
+				+ method.getReadableSignatureWithNoClassName(chop) + "<BR/>in class: " + method.getClassName() + ">";
 	}
 
 	private final String nameInDotFile(MethodMetadata method) {

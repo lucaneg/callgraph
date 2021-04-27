@@ -14,12 +14,16 @@ public class Runner {
 	private static final Option INPUT;
 	private static final Option OUTPUT;
 	private static final Option UNRESOLVED;
+	private static final Option CHOP;
 
 	static {
 		INPUT = Option.builder("i").longOpt("input").hasArg()
 				.desc("add a jar file to be analyzed").build();
 		OUTPUT = Option.builder("o").longOpt("output").hasArg().desc("name of the output dot graph").required().build();
-		UNRESOLVED = Option.builder("u").longOpt("exclude-unresolved").desc("do not dump unresolved (i.e. library) methods").build();
+		UNRESOLVED = Option.builder("u").longOpt("exclude-unresolved")
+				.desc("do not dump unresolved (i.e. library) methods").build();
+		CHOP = Option.builder("c").longOpt("chop-types")
+				.desc("use simple class names for return types and parameters instead of fully qualified ones").build();
 	}
 
 	private static CommandLine cmdLine;
@@ -45,7 +49,8 @@ public class Runner {
 
 			explorer.computeCallingChains();
 
-			new DotDumper(explorer, cmdLine.hasOption(UNRESOLVED.getOpt())).dump(cmdLine.getOptionValue(OUTPUT.getOpt()));
+			new DotDumper(explorer, cmdLine.hasOption(UNRESOLVED.getOpt()), cmdLine.hasOption(CHOP.getOpt()))
+					.dump(cmdLine.getOptionValue(OUTPUT.getOpt()));
 		} catch (ParseException e) {
 			printUsage(options);
 			System.err.println(e.getMessage());
@@ -65,6 +70,7 @@ public class Runner {
 		result.addOption(INPUT);
 		result.addOption(OUTPUT);
 		result.addOption(UNRESOLVED);
+		result.addOption(CHOP);
 		return result;
 	}
 }
