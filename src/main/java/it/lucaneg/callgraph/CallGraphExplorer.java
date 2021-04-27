@@ -4,15 +4,28 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.jar.JarFile;
 import java.util.stream.Collectors;
 
 import org.apache.bcel.Repository;
+import org.apache.bcel.classfile.Attribute;
+import org.apache.bcel.classfile.BootstrapMethod;
+import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.ClassFormatException;
 import org.apache.bcel.classfile.ClassParser;
+import org.apache.bcel.classfile.Constant;
+import org.apache.bcel.classfile.ConstantCP;
+import org.apache.bcel.classfile.ConstantClass;
+import org.apache.bcel.classfile.ConstantInvokeDynamic;
+import org.apache.bcel.classfile.ConstantMethodHandle;
+import org.apache.bcel.classfile.ConstantNameAndType;
+import org.apache.bcel.classfile.ConstantPool;
 import org.apache.bcel.classfile.JavaClass;
 import org.apache.bcel.classfile.Method;
 import org.apache.bcel.classfile.Utility;
@@ -34,67 +47,153 @@ public class CallGraphExplorer {
 
 	public Collection<MethodMetadata> getEntryPointMethods() {
 		return methods.values()
-						.stream()
-						.filter(m -> m.getCallers().isEmpty() && !m.isUnresolved())
-						.collect(Collectors.toList());
+				.stream()
+				.filter(m -> m.getCallers().isEmpty() && !m.isUnresolved())
+				.collect(Collectors.toList());
 	}
-	
+
 	public void computeCallingChains() {
 		int dynamics = 0;
-		
-		for (ClassGen clazz : classes.values())
+
+		for (ClassGen clazz : classes.values()) {
+			AtomicInteger skippedInfos = new AtomicInteger(0);
+			List<LambdaInfo> infos = computeLambdas(clazz, skippedInfos);
+			dynamics += skippedInfos.get();
+
 			for (Method m : clazz.getMethods()) {
 				ConstantPoolGen cp = new ConstantPoolGen(m.getConstantPool());
 				MethodGen method = new MethodGen(m, clazz.getClassName(), cp);
 				MethodMetadata metadata = methods.computeIfAbsent(signature(method), s -> new MethodMetadata(s));
-				
+
 				if (method.isAbstract() || method.isNative() || method.isInterface())
 					continue;
-				
+
 				for (InstructionHandle handle : method.getInstructionList())
 					if (handle.getInstruction() instanceof InvokeInstruction) {
 						InvokeInstruction invoke = (InvokeInstruction) handle.getInstruction();
-						
-						String name = invoke.getName(cp);
-						Type[] pars = invoke.getArgumentTypes(cp);
 
-						// we determine the return type of the method
-						Type returnType = invoke.getReturnType(cp);
-
+						boolean unresolved = false;
+						String target;
 						if (invoke instanceof INVOKEDYNAMIC) {
-							// TODO
-							dynamics++;
+							INVOKEDYNAMIC call = (INVOKEDYNAMIC) invoke;
+							ConstantInvokeDynamic id = (ConstantInvokeDynamic) cp.getConstant(call.getIndex());
+
+							int index = id.getBootstrapMethodAttrIndex();
+							target = infos.get(index).getSignature();
 						} else {
-							// we determine the class of the receiver
+							String name = invoke.getName(cp);
+							Type[] pars = invoke.getArgumentTypes(cp);
+							Type returnType = invoke.getReturnType(cp);
+
 							ReferenceType recType = invoke.getReferenceType(cp);
 							if (!(recType instanceof ObjectType))
 								recType = ObjectType.OBJECT;
-							
+
 							// TODO dynamic target resolution
-							
-							boolean unresolved = false;
+
 							if (!classes.containsKey(Utility.signatureToString(recType.getSignature(), false)))
 								unresolved = true;
 
-							String target = signature(recType, name, pars, returnType);
-							if (unresolved) {
-								MethodMetadata targetMetadata = methods.computeIfAbsent(target, s -> new MethodMetadata(s, true));
-								metadata.getUnresolvedCallees().add(targetMetadata);
-								targetMetadata.getCallers().add(metadata);
-							} else {
-								MethodMetadata targetMetadata = methods.computeIfAbsent(target, s -> new MethodMetadata(s));
-								metadata.getCallees().add(targetMetadata);
-								targetMetadata.getCallers().add(metadata);
-							}
+							target = signature(recType, name, pars, returnType);
 						}
+
+						MethodMetadata targetMetadata = methods.computeIfAbsent(target, s -> new MethodMetadata(s));
+						targetMetadata.getCallers().add(metadata);
+						if (unresolved)
+							metadata.getUnresolvedCallees().add(targetMetadata);
+						else
+							metadata.getCallees().add(targetMetadata);
 					}
 			}
-		
-		System.out.println("Skipped " + dynamics + " invokedynamic statements");
+		}
+
+		if (dynamics != 0)
+			System.out.println("Skipped " + dynamics + " invokedynamic statements");
 	}
-	
+
+	private final static String LAMBDA_FACTORY_CLASS = "java/lang/invoke/LambdaMetafactory";
+	private final static String CONCAT_CLASS = "java/lang/invoke/StringConcatFactory";
+	private final static String CONCAT_METHOD = "makeConcatWithConstants";
+	private final static String CONCAT_SIGNATURE = "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;"
+			+ "Ljava/lang/invoke/MethodType;Ljava/lang/String;[Ljava/lang/Object;)"
+			+ "Ljava/lang/invoke/CallSite;";
+
+	private List<LambdaInfo> computeLambdas(ClassGen clazz, AtomicInteger skipped) {
+		List<LambdaInfo> infos = new ArrayList<>();
+		for (Attribute attribute : clazz.getAttributes())
+			if (attribute instanceof BootstrapMethods) {
+				ConstantPoolGen cpg = clazz.getConstantPool();
+				ConstantPool cp = cpg.getConstantPool();
+
+				for (BootstrapMethod bootstrap : ((BootstrapMethods) attribute).getBootstrapMethods()) {
+					int[] args = bootstrap.getBootstrapArguments();
+					ConstantMethodHandle methodRef = (ConstantMethodHandle) cpg
+							.getConstant(bootstrap.getBootstrapMethodRef());
+					int index = methodRef.getReferenceIndex();
+					ConstantCP target = (ConstantCP) cpg.getConstant(index);
+					String definingClass = ((ConstantClass) cpg.getConstant(target.getClassIndex())).getBytes(cp);
+
+					if (args.length >= 3 && definingClass.equals(LAMBDA_FACTORY_CLASS)) {
+						Constant cmh = cpg.getConstant(args[1]);
+						if (cmh instanceof ConstantMethodHandle) {
+							int ri = ((ConstantMethodHandle) cmh).getReferenceIndex();
+
+							ConstantCP cpentry = (ConstantCP) cpg.getConstant(ri);
+							String cpclass = ((ConstantClass) cpg.getConstant(cpentry.getClassIndex())).getBytes(cp);
+							ConstantNameAndType nameAndType = (ConstantNameAndType) cpg
+									.getConstant(cpentry.getNameAndTypeIndex());
+
+							infos.add(new LambdaInfo(nameAndType.getName(cp), Utility.signatureToString("L" + cpclass + ";", false), nameAndType.getSignature(cp)));
+						} else {
+							skipped.incrementAndGet();
+							continue;
+						}
+					} else if (args.length >= 1 && definingClass.equals(CONCAT_CLASS)) {
+						ConstantNameAndType nameAndType = (ConstantNameAndType) cpg
+								.getConstant(target.getNameAndTypeIndex());
+						String name = nameAndType.getName(cp);
+						String signature = nameAndType.getSignature(cp);
+
+						if (CONCAT_METHOD.equals(name) && CONCAT_SIGNATURE.equals(signature))
+							infos.add(new LambdaInfo(CONCAT_METHOD, CONCAT_CLASS, CONCAT_SIGNATURE));
+						else {
+							skipped.incrementAndGet();
+							continue;
+						}
+					}
+				}
+			}
+
+		return infos;
+	}
+
+	public static class LambdaInfo {
+
+		private final String targetName;
+
+		private final String targetClass;
+
+		private final String targetSignature;
+
+		private LambdaInfo(String targetName, String targetClass, String targetSignature) {
+			this.targetName = targetName;
+			this.targetClass = targetClass;
+			this.targetSignature = targetSignature;
+		}
+
+		public String getSignature() {
+			return targetClass + "." + targetName + targetSignature;
+		}
+
+		@Override
+		public String toString() {
+			return targetName + ", " + targetClass + ", " + targetSignature;
+		}
+	}
+
 	private static String signature(ReferenceType receiver, String name, Type[] pars, Type ret) {
-		return Utility.signatureToString(receiver.getSignature(), false) + "." + name + Type.getMethodSignature(ret, pars);
+		return Utility.signatureToString(receiver.getSignature(), false) + "." + name
+				+ Type.getMethodSignature(ret, pars);
 	}
 
 	private static String signature(MethodGen method) {
