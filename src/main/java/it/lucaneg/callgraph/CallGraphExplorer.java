@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import java.util.jar.JarFile;
 import java.util.stream.Collectors;
 
@@ -45,15 +46,11 @@ public class CallGraphExplorer {
 
 	private Map<String, MethodMetadata> methods = new HashMap<>();
 
-	public Collection<MethodMetadata> getEntryPointMethods(boolean excludeUnresolved) {
+	public Collection<MethodMetadata> getMatching(Predicate<MethodMetadata> test) {
 		return methods.values()
 				.stream()
-				.filter(m -> isEntry(excludeUnresolved, m))
+				.filter(test)
 				.collect(Collectors.toList());
-	}
-
-	private boolean isEntry(boolean excludeUnresolved, MethodMetadata m) {
-		return m.getCallers().isEmpty() && (!excludeUnresolved || !m.isUnresolved());
 	}
 
 	public void computeCallingChains() {

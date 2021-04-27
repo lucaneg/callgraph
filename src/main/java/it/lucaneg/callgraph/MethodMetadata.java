@@ -4,7 +4,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 
-public class MethodMetadata {
+public class MethodMetadata implements Comparable<MethodMetadata> {
 	private final String signature;
 	private final String className;
 	private final String name;
@@ -165,5 +165,10 @@ public class MethodMetadata {
 				+ "}, callees: {" + Arrays.toString(callees.stream().map(c -> c.getSignature()).toArray(String[]::new))
 				+ "}, unresolved callees: {"
 				+ Arrays.toString(unresolvedCallees.stream().map(c -> c.getSignature()).toArray(String[]::new)) + "}]";
+	}
+	
+	@Override
+	public int compareTo(MethodMetadata o) {
+		return signature.compareTo(o.signature);
 	}
 }
