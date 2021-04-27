@@ -36,12 +36,18 @@ public class MethodMetadata {
 		return signature;
 	}
 
-	public String getClassName() {
+	public String getClassName(boolean chop) {
+		if (chop && className.contains("."))
+			return className.substring(className.lastIndexOf('.') + 1);
 		return className;
 	}
 
 	public String getName() {
-		return name.equals("<init>") ? "constructor" : name.equals("<clinit>") ? "class constructor" : name;
+		return name;
+	}
+
+	public String getReadableName() {
+		return name.equals("<init>") ? getClassName(true) : name.equals("<clinit>") ? "clinit-" + getClassName(true) : name;
 	}
 
 	public String getRet(boolean chop) {
@@ -71,14 +77,14 @@ public class MethodMetadata {
 
 	public String getReadableSignature(boolean chop) {
 		if (isConstructor() || isClassConstructor())
-			return className + "." + getName() + "(" + String.join(", ", getParams(chop)) + ")";
-		return getRet(chop) + " " + className + "." + getName() + "(" + String.join(", ", getParams(chop)) + ")";
+			return className + "." + getReadableName() + "(" + String.join(", ", getParams(chop)) + ")";
+		return getRet(chop) + " " + className + "." + getReadableName() + "(" + String.join(", ", getParams(chop)) + ")";
 	}
 
 	public String getReadableSignatureWithNoClassName(boolean chop) {
 		if (isConstructor() || isClassConstructor())
-			return getName() + "(" + String.join(", ", getParams(chop)) + ")";
-		return getRet(chop) + " " + getName() + "(" + String.join(", ", getParams(chop)) + ")";
+			return getReadableName() + "(" + String.join(", ", getParams(chop)) + ")";
+		return getRet(chop) + " " + getReadableName() + "(" + String.join(", ", getParams(chop)) + ")";
 	}
 
 	public boolean isUnresolved() {

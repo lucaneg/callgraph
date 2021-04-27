@@ -80,7 +80,7 @@ public class DotDumper {
 
 	private String getLabelFor(MethodMetadata method) {
 		return "shape = box, label = <" + (method.isUnresolved() ? "[open] " : "")
-				+ method.getReadableSignatureWithNoClassName(chop) + "<BR/>in class: " + method.getClassName() + ">";
+				+ method.getReadableSignatureWithNoClassName(chop) + "<BR/>class: " + method.getClassName(false) + ">";
 	}
 
 	private final String nameInDotFile(MethodMetadata method) {
