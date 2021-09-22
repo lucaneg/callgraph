@@ -31,7 +31,7 @@ public class JGraphtGraph implements Graph {
 		graph.addVertex(method);
 		String label = (method.isUnresolved() ? "[open] " : "") 
 				+ method.getReadableSignatureWithNoClassName(chop) 
-				+ "\nclass: " + method.getClassName(chop);
+				+ "\nclass: " + method.getClassName(false);
 		nodeAttributes.put(method, Map.of(
 				"entry", new DefaultAttribute<>(entry, AttributeType.BOOLEAN),
 				"exit", new DefaultAttribute<>(exit, AttributeType.BOOLEAN),

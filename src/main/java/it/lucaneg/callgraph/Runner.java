@@ -1,6 +1,7 @@
 package it.lucaneg.callgraph;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.DefaultParser;
@@ -18,15 +19,42 @@ public class Runner {
 	private static final Option OUTPUT;
 	private static final Option UNRESOLVED;
 	private static final Option CHOP;
+	private static final Option FORMAT;
 
+	enum Format {
+		GRAPHML, DOT
+	}
+	
 	static {
-		INPUT = Option.builder("i").longOpt("input").hasArg()
-				.desc("add a jar file to be analyzed").build();
-		OUTPUT = Option.builder("o").longOpt("output").hasArg().desc("name of the output dot graph").required().build();
-		UNRESOLVED = Option.builder("u").longOpt("exclude-unresolved")
-				.desc("do not dump unresolved (i.e. library) methods").build();
-		CHOP = Option.builder("c").longOpt("chop-types")
-				.desc("use simple class names for return types and parameters instead of fully qualified ones").build();
+		INPUT = Option.builder("i")
+						.longOpt("input")
+						.hasArg()
+						.argName("path")
+						.desc("add a jar file to be analyzed")
+						.required()
+						.build();
+		OUTPUT = Option.builder("o")
+						.longOpt("output")
+						.hasArg()
+						.argName("path")
+						.desc("name of the output dot graph")
+						.required()
+						.build();
+		UNRESOLVED = Option.builder("u")
+						.longOpt("exclude-unresolved")
+						.desc("do not dump unresolved (i.e. library) methods")
+						.build();
+		CHOP = Option.builder("c")
+						.longOpt("chop-types")
+						.desc("use simple class names for return types and parameters instead of fully qualified ones")
+						.build();
+		FORMAT = Option.builder("f")
+						.longOpt("format")
+						.hasArg()
+						.argName("format")
+						.desc("the type of output graph. Defaults to " + Format.GRAPHML.name().toLowerCase() + ". Possible values: " 
+								+ String.join(", ", Arrays.stream(Format.values()).map(Format::name).map(String::toLowerCase).toArray(String[]::new)))
+						.build();
 	}
 
 	private static CommandLine cmdLine;
@@ -35,11 +63,6 @@ public class Runner {
 		Options options = buildOptions();
 		try {
 			cmdLine = new DefaultParser().parse(options, args);
-
-			if (!cmdLine.hasOption(INPUT.getOpt())) {
-				System.out.println("No input jar provided with -" + INPUT.getOpt() + ", skipping execution");
-				return;
-			}
 
 			CallGraphExplorer explorer = new CallGraphExplorer();
 			for (String in : cmdLine.getOptionValues(INPUT.getOpt()))
@@ -55,9 +78,18 @@ public class Runner {
 			boolean unresolved = cmdLine.hasOption(UNRESOLVED.getOpt());
 			boolean chop = cmdLine.hasOption(CHOP.getOpt());
 			String output = cmdLine.getOptionValue(OUTPUT.getOpt());
+			Format format = Format.valueOf(cmdLine.getOptionValue(FORMAT.getOpt()));
 			
-			new DotDumper(explorer, unresolved, chop).dump(output);
-			new JGraphtDumper(explorer, unresolved, chop).dump(output);
+			switch (format) {
+			case DOT:
+				new DotDumper(explorer, unresolved, chop).dump(output);
+				break;
+			case GRAPHML:
+				new JGraphtDumper(explorer, unresolved, chop).dump(output);				
+				break;
+			default:
+				throw new IllegalArgumentException("Unknown output format: " + format.name().toLowerCase());
+			}
 		} catch (ParseException e) {
 			printUsage(options);
 			System.err.println(e.getMessage());
@@ -69,7 +101,7 @@ public class Runner {
 
 	private static void printUsage(Options options) {
 		HelpFormatter hf = new HelpFormatter();
-		hf.printHelp(Runner.class.getSimpleName(), options);
+		hf.printHelp(Runner.class.getSimpleName(), options, true);
 	}
 
 	private static Options buildOptions() {
@@ -78,6 +110,7 @@ public class Runner {
 		result.addOption(OUTPUT);
 		result.addOption(UNRESOLVED);
 		result.addOption(CHOP);
+		result.addOption(FORMAT);
 		return result;
 	}
 }
