@@ -9,6 +9,8 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
+import it.lucaneg.callgraph.dump.dot.DotDumper;
+
 public class Runner {
 
 	private static final Option INPUT;

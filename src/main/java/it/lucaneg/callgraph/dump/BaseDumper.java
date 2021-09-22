@@ -1,4 +1,4 @@
-package it.lucaneg.callgraph;
+package it.lucaneg.callgraph.dump;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -9,7 +9,10 @@ import java.util.Set;
 import java.util.Stack;
 import java.util.TreeSet;
 
-public class DotDumper {
+import it.lucaneg.callgraph.CallGraphExplorer;
+import it.lucaneg.callgraph.MethodMetadata;
+
+public abstract class BaseDumper {
 
 	private final Set<MethodMetadata> isolated = new TreeSet<>();
 
@@ -19,7 +22,7 @@ public class DotDumper {
 
 	private final boolean chop;
 
-	public DotDumper(CallGraphExplorer explorer, boolean excludeUnresolved, boolean chop) {
+	protected BaseDumper(CallGraphExplorer explorer, boolean excludeUnresolved, boolean chop) {
 		this.excludeUnresolved = excludeUnresolved;
 		this.chop = chop;
 		Collection<MethodMetadata> start = explorer.getMatching(m -> isEntry(m));
@@ -30,9 +33,13 @@ public class DotDumper {
 				else
 					workingSet.push(entry);
 	}
+	
+	protected abstract Graph getGraph();
 
-	public void dump(String path) throws IOException {
-		DotGraph g = new DotGraph();
+	protected abstract String getGraphExtension();
+
+	public final void dump(String path) throws IOException {
+		Graph g = getGraph();
 		Set<MethodMetadata> added = new HashSet<>();
 		Set<MethodMetadata> done = new HashSet<>();
 
@@ -63,8 +70,8 @@ public class DotDumper {
 					}
 			}
 		}
-		try (Writer file = new FileWriter(path)) {
-			g.dumpDot(file);
+		try (Writer file = new FileWriter(path + "." + getGraphExtension())) {
+			g.dump(file);
 			System.out.println("Callgraph dumped to " + path);
 		}
 	}
