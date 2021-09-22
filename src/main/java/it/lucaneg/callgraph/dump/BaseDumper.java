@@ -70,9 +70,10 @@ public abstract class BaseDumper {
 					}
 			}
 		}
-		try (Writer file = new FileWriter(path + "." + getGraphExtension())) {
+		String fileName = path + "." + getGraphExtension();
+		try (Writer file = new FileWriter(fileName)) {
 			g.dump(file);
-			System.out.println("Callgraph dumped to " + path);
+			System.out.println("Callgraph dumped to " + fileName);
 		}
 	}
 

@@ -10,6 +10,7 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
 import it.lucaneg.callgraph.dump.dot.DotDumper;
+import it.lucaneg.callgraph.dump.jgrapht.JGraphtDumper;
 
 public class Runner {
 
@@ -51,8 +52,12 @@ public class Runner {
 
 			explorer.computeCallingChains();
 
-			new DotDumper(explorer, cmdLine.hasOption(UNRESOLVED.getOpt()), cmdLine.hasOption(CHOP.getOpt()))
-					.dump(cmdLine.getOptionValue(OUTPUT.getOpt()));
+			boolean unresolved = cmdLine.hasOption(UNRESOLVED.getOpt());
+			boolean chop = cmdLine.hasOption(CHOP.getOpt());
+			String output = cmdLine.getOptionValue(OUTPUT.getOpt());
+			
+			new DotDumper(explorer, unresolved, chop).dump(output);
+			new JGraphtDumper(explorer, unresolved, chop).dump(output);
 		} catch (ParseException e) {
 			printUsage(options);
 			System.err.println(e.getMessage());
