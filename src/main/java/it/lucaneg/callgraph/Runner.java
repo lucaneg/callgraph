@@ -11,7 +11,7 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
 import it.lucaneg.callgraph.dump.dot.DotDumper;
-import it.lucaneg.callgraph.dump.jgrapht.JGraphtDumper;
+import it.lucaneg.callgraph.dump.graphml.GraphMLDumper;
 
 public class Runner {
 
@@ -78,14 +78,14 @@ public class Runner {
 			boolean unresolved = cmdLine.hasOption(UNRESOLVED.getOpt());
 			boolean chop = cmdLine.hasOption(CHOP.getOpt());
 			String output = cmdLine.getOptionValue(OUTPUT.getOpt());
-			Format format = Format.valueOf(cmdLine.getOptionValue(FORMAT.getOpt()));
+			Format format = Format.valueOf(cmdLine.getOptionValue(FORMAT.getOpt(), Format.GRAPHML.name()).toUpperCase());
 			
 			switch (format) {
 			case DOT:
 				new DotDumper(explorer, unresolved, chop).dump(output);
 				break;
 			case GRAPHML:
-				new JGraphtDumper(explorer, unresolved, chop).dump(output);				
+				new GraphMLDumper(explorer, unresolved, chop).dump(output);				
 				break;
 			default:
 				throw new IllegalArgumentException("Unknown output format: " + format.name().toLowerCase());

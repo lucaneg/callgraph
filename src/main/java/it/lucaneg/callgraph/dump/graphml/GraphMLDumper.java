@@ -1,18 +1,18 @@
-package it.lucaneg.callgraph.dump.jgrapht;
+package it.lucaneg.callgraph.dump.graphml;
 
 import it.lucaneg.callgraph.CallGraphExplorer;
 import it.lucaneg.callgraph.dump.BaseDumper;
 import it.lucaneg.callgraph.dump.Graph;
 
-public class JGraphtDumper extends BaseDumper {
+public class GraphMLDumper extends BaseDumper {
 
-	public JGraphtDumper(CallGraphExplorer explorer, boolean excludeUnresolved, boolean chop) {
+	public GraphMLDumper(CallGraphExplorer explorer, boolean excludeUnresolved, boolean chop) {
 		super(explorer, excludeUnresolved, chop);
 	}
 
 	@Override
 	protected Graph getGraph() {
-		return new JGraphtGraph();
+		return new GraphMLGraph();
 	}
 
 	@Override

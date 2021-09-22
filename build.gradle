@@ -13,9 +13,6 @@ dependencies {
 	
 	implementation 'org.graphstream:gs-core:2.0'
 	
-	implementation 'org.jgrapht:jgrapht-io:1.5.1'
-	implementation 'org.jgrapht:jgrapht-ext:1.5.1'
-	
     testImplementation 'junit:junit:4.12'
 }
 
