@@ -14,7 +14,7 @@ import org.graphstream.graph.Node;
 import org.graphstream.graph.implementations.MultiGraph;
 import org.graphstream.stream.file.FileSinkDOT;
 
-import it.lucaneg.callgraph.MethodMetadata;
+import it.lucaneg.callgraph.model.MethodMetadata;
 
 public class DotGraph implements it.lucaneg.callgraph.dump.Graph {
 	private static final String COLOR_BLACK = "black";

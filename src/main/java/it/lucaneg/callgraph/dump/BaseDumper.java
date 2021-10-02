@@ -10,7 +10,7 @@ import java.util.Stack;
 import java.util.TreeSet;
 
 import it.lucaneg.callgraph.CallGraphExplorer;
-import it.lucaneg.callgraph.MethodMetadata;
+import it.lucaneg.callgraph.model.MethodMetadata;
 
 public abstract class BaseDumper {
 

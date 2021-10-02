@@ -3,7 +3,7 @@ package it.lucaneg.callgraph.dump;
 import java.io.IOException;
 import java.io.Writer;
 
-import it.lucaneg.callgraph.MethodMetadata;
+import it.lucaneg.callgraph.model.MethodMetadata;
 
 public interface Graph {
 
