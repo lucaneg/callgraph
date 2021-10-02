@@ -1,28 +1,33 @@
-package it.lucaneg.callgraph;
+package it.lucaneg.callgraph.model;
 
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.Set;
+
+import it.lucaneg.callgraph.types.Type;
 
 public class MethodMetadata implements Comparable<MethodMetadata> {
+
 	private final String signature;
-	private final String className;
 	private final String name;
-	private final String ret;
-	private final String[] params;
+	private final Type ret;
+	private final Type[] params;
 	private final boolean unresolved;
 	private final Collection<MethodMetadata> callers;
 	private final Collection<MethodMetadata> callees;
 	private final Collection<MethodMetadata> unresolvedCallees;
+	private final ClassMetadata clazz;
+	private final boolean canBeOverridden;
 
-	public MethodMetadata(String signature, String className, String name, String ret, String[] params) {
-		this(signature, className, name, ret, params, false);
+	public MethodMetadata(ClassMetadata clazz, String signature, String name, Type ret, Type[] params,
+			boolean canBeOverridden) {
+		this(clazz, signature, name, ret, params, canBeOverridden, false);
 	}
 
-	public MethodMetadata(String signature, String className, String name, String ret, String[] params,
-			boolean unresolved) {
+	public MethodMetadata(ClassMetadata clazz, String signature, String name, Type ret, Type[] params,
+			boolean canBeOverridden, boolean unresolved) {
+		this.clazz = clazz;
 		this.signature = signature;
-		this.className = className;
 		this.name = name;
 		this.ret = ret;
 		this.params = params;
@@ -30,16 +35,21 @@ public class MethodMetadata implements Comparable<MethodMetadata> {
 		this.callees = new HashSet<>();
 		this.callers = new HashSet<>();
 		this.unresolvedCallees = new HashSet<>();
+		this.canBeOverridden = canBeOverridden;
 	}
 
 	public String getSignature() {
 		return signature;
 	}
 
+	public ClassMetadata getDefiningClass() {
+		return clazz;
+	}
+
 	public String getClassName(boolean chop) {
-		if (chop && className.contains("."))
-			return className.substring(className.lastIndexOf('.') + 1);
-		return className;
+		if (chop && clazz.getName().contains("."))
+			return clazz.getName().substring(clazz.getName().lastIndexOf('.') + 1);
+		return clazz.getName();
 	}
 
 	public String getName() {
@@ -47,24 +57,24 @@ public class MethodMetadata implements Comparable<MethodMetadata> {
 	}
 
 	public String getReadableName() {
-		return name.equals("<init>") ? getClassName(true) : name.equals("<clinit>") ? "clinit-" + getClassName(true) : name;
+		return name.equals("<init>") ? getClassName(true)
+				: name.equals("<clinit>") ? "clinit-" + getClassName(true) : name;
 	}
 
 	public String getRet(boolean chop) {
-		if (chop && ret.contains("."))
-			return ret.substring(ret.lastIndexOf('.') + 1);
-		return ret;
+		if (chop)
+			return ret.toChoppedString();
+		return ret.toString();
 	}
 
 	public String[] getParams(boolean chop) {
-		if (chop) {
-			String[] chopped = new String[params.length];
-			for (int i = 0; i < chopped.length; i++)
-				chopped[i] = params[i].contains(".") ? params[i].substring(params[i].lastIndexOf('.') + 1) : params[i];
-
-			return chopped;
-		}
-		return params;
+		String[] chopped = new String[params.length];
+		for (int i = 0; i < chopped.length; i++)
+		if (chop) 
+			chopped[i] = params[i].toChoppedString();
+		else 
+			chopped[i] = params[i].toString();
+		return chopped;
 	}
 
 	public boolean isConstructor() {
@@ -77,8 +87,9 @@ public class MethodMetadata implements Comparable<MethodMetadata> {
 
 	public String getReadableSignature(boolean chop) {
 		if (isConstructor() || isClassConstructor())
-			return className + "." + getReadableName() + "(" + String.join(", ", getParams(chop)) + ")";
-		return getRet(chop) + " " + className + "." + getReadableName() + "(" + String.join(", ", getParams(chop)) + ")";
+			return clazz.getName() + "." + getReadableName() + "(" + String.join(", ", getParams(chop)) + ")";
+		return getRet(chop) + " " + clazz.getName() + "." + getReadableName() + "(" + String.join(", ", getParams(chop))
+				+ ")";
 	}
 
 	public String getReadableSignatureWithNoClassName(boolean chop) {
@@ -109,16 +120,15 @@ public class MethodMetadata implements Comparable<MethodMetadata> {
 		return all;
 	}
 
+	public boolean canBeOverridden() {
+		return canBeOverridden;
+	}
+
 	@Override
 	public int hashCode() {
 		final int prime = 31;
 		int result = 1;
-		result = prime * result + ((className == null) ? 0 : className.hashCode());
-		result = prime * result + ((name == null) ? 0 : name.hashCode());
-		result = prime * result + Arrays.hashCode(params);
-		result = prime * result + ((ret == null) ? 0 : ret.hashCode());
 		result = prime * result + ((signature == null) ? 0 : signature.hashCode());
-		result = prime * result + (unresolved ? 1231 : 1237);
 		return result;
 	}
 
@@ -131,44 +141,44 @@ public class MethodMetadata implements Comparable<MethodMetadata> {
 		if (getClass() != obj.getClass())
 			return false;
 		MethodMetadata other = (MethodMetadata) obj;
-		if (className == null) {
-			if (other.className != null)
-				return false;
-		} else if (!className.equals(other.className))
-			return false;
-		if (name == null) {
-			if (other.name != null)
-				return false;
-		} else if (!name.equals(other.name))
-			return false;
-		if (!Arrays.equals(params, other.params))
-			return false;
-		if (ret == null) {
-			if (other.ret != null)
-				return false;
-		} else if (!ret.equals(other.ret))
-			return false;
 		if (signature == null) {
 			if (other.signature != null)
 				return false;
 		} else if (!signature.equals(other.signature))
-			return false;
-		if (unresolved != other.unresolved)
 			return false;
 		return true;
 	}
 
 	@Override
 	public String toString() {
-		return (isUnresolved() ? "[open] " : "") + signature
-				+ " [callers: {" + Arrays.toString(callers.stream().map(c -> c.getSignature()).toArray(String[]::new))
-				+ "}, callees: {" + Arrays.toString(callees.stream().map(c -> c.getSignature()).toArray(String[]::new))
-				+ "}, unresolved callees: {"
-				+ Arrays.toString(unresolvedCallees.stream().map(c -> c.getSignature()).toArray(String[]::new)) + "}]";
+		return (isUnresolved() ? "[open] " : "") + signature;
 	}
-	
+
 	@Override
 	public int compareTo(MethodMetadata o) {
 		return signature.compareTo(o.signature);
+	}
+
+	private boolean hasCompatibleSignatureForOverride(MethodMetadata other) {
+		if (!name.equals(other.name) || params.length != other.params.length)
+			return false;
+		
+		if (!other.ret.isAssignableTo(ret))
+			return false;
+		
+		for (int i = 0; i < params.length; i++)
+			if (!params[i].equals(other.params[i]))
+				return false;
+		
+		return true;
+	}
+
+	public Set<MethodMetadata> getOverriders() {
+		Set<MethodMetadata> result = new HashSet<>();
+		for (ClassMetadata instance : clazz.getInstances())
+			for (MethodMetadata method : instance.getMethods())
+				if (hasCompatibleSignatureForOverride(method))
+					result.add(method);
+		return result;
 	}
 }

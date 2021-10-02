@@ -45,6 +45,13 @@ public class ClassType implements ReferenceType {
 	}
 	
 	@Override
+	public String toChoppedString() {
+		if (name.contains("."))
+			return name.substring(name.lastIndexOf('.') + 1);
+		return name;
+	}
+	
+	@Override
 	public String toJVM() {
 		return "L" + name.replace('.', '/') + ";";
 	}

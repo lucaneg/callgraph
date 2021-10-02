@@ -51,13 +51,17 @@ public class ClassMetadata {
 	}
 
 	public void closeHierarchy() {
-		instances.add(this);
+		addInstance(this);
+	}
+	
+	private void addInstance(ClassMetadata instance) {
+		instances.add(instance);
 		
 		if (superclass != null)
-			superclass.instances.add(this);
+			superclass.addInstance(instance);
 		
 		for (ClassMetadata iface : interfaces)
-			iface.instances.add(this);
+			iface.addInstance(instance);
 	}
 	
 	public Set<ClassMetadata> getInstances() {

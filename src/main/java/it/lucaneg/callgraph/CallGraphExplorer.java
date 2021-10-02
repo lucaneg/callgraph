@@ -9,11 +9,13 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.jar.JarFile;
 import java.util.stream.Collectors;
 
+import org.apache.bcel.Const;
 import org.apache.bcel.Repository;
 import org.apache.bcel.classfile.Attribute;
 import org.apache.bcel.classfile.BootstrapMethod;
@@ -33,16 +35,25 @@ import org.apache.bcel.classfile.Utility;
 import org.apache.bcel.generic.ClassGen;
 import org.apache.bcel.generic.ConstantPoolGen;
 import org.apache.bcel.generic.INVOKEDYNAMIC;
+import org.apache.bcel.generic.INVOKEINTERFACE;
+import org.apache.bcel.generic.INVOKEVIRTUAL;
 import org.apache.bcel.generic.InstructionHandle;
 import org.apache.bcel.generic.InvokeInstruction;
 import org.apache.bcel.generic.MethodGen;
 import org.apache.bcel.generic.ObjectType;
 import org.apache.bcel.generic.ReferenceType;
-import org.apache.bcel.generic.Type;
+import org.apache.commons.lang3.StringUtils;
+
+import it.lucaneg.callgraph.model.ClassMetadata;
+import it.lucaneg.callgraph.model.MethodMetadata;
+import it.lucaneg.callgraph.types.ClassType;
+import it.lucaneg.callgraph.types.Type;
 
 public class CallGraphExplorer {
 
-	private Map<String, ClassGen> classes = new HashMap<>();
+	private final Map<String, ClassGen> classGens = new HashMap<>();
+
+	private final Map<String, ClassMetadata> classes = new HashMap<>();
 
 	private Map<String, MethodMetadata> methods = new HashMap<>();
 
@@ -54,83 +65,171 @@ public class CallGraphExplorer {
 	}
 
 	public void computeCallingChains() {
+		for (ClassGen classGen : classGens.values())
+			parseClassSignature(classGen);
+
 		int dynamics = 0;
-
-		for (ClassGen clazz : classes.values()) {
-			AtomicInteger skippedInfos = new AtomicInteger(0);
-			List<LambdaInfo> infos = computeLambdas(clazz, skippedInfos);
-			dynamics += skippedInfos.get();
-
-			for (Method m : clazz.getMethods()) {
-				ConstantPoolGen cp = new ConstantPoolGen(m.getConstantPool());
-				MethodGen method = new MethodGen(m, clazz.getClassName(), cp);
-				Type[] args = m.getArgumentTypes();
-				String[] params = new String[args.length];
-				for (int i = 0; i < params.length; i++)
-					params[i] = Utility.signatureToString(args[i].getSignature(), false);
-				MethodMetadata metadata = new MethodMetadata(signature(method), clazz.getClassName(), m.getName(),
-						Utility.signatureToString(m.getReturnType().getSignature(), false), params);
-				metadata = put(metadata);
-
-				if (method.isAbstract() || method.isNative() || method.isInterface())
-					continue;
-
-				for (InstructionHandle handle : method.getInstructionList())
-					if (handle.getInstruction() instanceof InvokeInstruction) {
-						InvokeInstruction invoke = (InvokeInstruction) handle.getInstruction();
-
-						boolean unresolved = false;
-						MethodMetadata targetMetadata;
-						if (invoke instanceof INVOKEDYNAMIC) {
-							INVOKEDYNAMIC call = (INVOKEDYNAMIC) invoke;
-							ConstantInvokeDynamic id = (ConstantInvokeDynamic) cp.getConstant(call.getIndex());
-
-							int index = id.getBootstrapMethodAttrIndex();
-							LambdaInfo info = infos.get(index);
-							targetMetadata = new MethodMetadata(info.getSignature(), info.getTargetClass(),
-									info.getTargetName(),
-									Utility.methodSignatureReturnType(info.getTargetSignature(), false),
-									Utility.methodSignatureArgumentTypes(info.getTargetSignature(), false));
-						} else {
-							String name = invoke.getName(cp);
-							Type[] pars = invoke.getArgumentTypes(cp);
-							Type returnType = invoke.getReturnType(cp);
-
-							ReferenceType recType = invoke.getReferenceType(cp);
-							if (!(recType instanceof ObjectType))
-								recType = ObjectType.OBJECT;
-
-							// TODO dynamic target resolution
-
-							if (!classes.containsKey(Utility.signatureToString(recType.getSignature(), false)))
-								unresolved = true;
-
-							String sig = invoke.getSignature(cp);
-							targetMetadata = new MethodMetadata(signature(recType, name, pars, returnType),
-									Utility.signatureToString(recType.getSignature(), false), name,
-									Utility.methodSignatureReturnType(sig, false),
-									Utility.methodSignatureArgumentTypes(sig, false), unresolved);
-						}
-
-						targetMetadata = put(targetMetadata);
-						targetMetadata.getCallers().add(metadata);
-						if (unresolved)
-							metadata.getUnresolvedCallees().add(targetMetadata);
-						else
-							metadata.getCallees().add(targetMetadata);
-					}
-			}
-		}
+		for (ClassGen classGen : classGens.values())
+			dynamics += process(classGen);
+		for (ClassMetadata clazz : classes.values())
+			clazz.closeHierarchy();
+		
+		for (MethodMetadata method : methods.values())
+			closure(method);
 
 		if (dynamics != 0)
 			System.out.println("Skipped " + dynamics + " invokedynamic statements");
 	}
 
-	private MethodMetadata put(MethodMetadata targetMetadata) {
-		MethodMetadata ret = methods.putIfAbsent(targetMetadata.getSignature(), targetMetadata);
+	private void parseClassSignature(ClassGen classGen) {
+		String className = classGen.getClassName();
+		if (classes.containsKey(className))
+			return;
+
+		String superclass = classGen.getSuperclassName();
+		if (!classes.containsKey(superclass) && classGens.containsKey(superclass))
+			parseClassSignature(classGens.get(superclass));
+		for (String iface : classGen.getInterfaceNames())
+			if (!classes.containsKey(iface) && classGens.containsKey(iface))
+				parseClassSignature(classGens.get(iface));
+
+		ClassMetadata clazz = new ClassMetadata(className);
+		clazz = put(classes, className, clazz);
+		if (classGens.containsKey(superclass))
+			clazz.setSuperclass(classes.get(superclass));
+		for (String iface : classGen.getInterfaceNames())
+			if (classGens.containsKey(iface))
+				clazz.addInterface(classes.get(iface));
+
+		// store it as a type
+		ClassType.lookup(className, clazz);
+	}
+
+	private int process(ClassGen classGen) {
+		String className = classGen.getClassName();
+		ClassMetadata clazz = classes.get(className);
+		AtomicInteger skippedInfos = new AtomicInteger(0);
+		List<LambdaInfo> infos = computeLambdas(classGen, skippedInfos);
+
+		for (Method m : classGen.getMethods()) {
+			ConstantPoolGen cp = new ConstantPoolGen(m.getConstantPool());
+			MethodGen method = new MethodGen(m, className, cp);
+
+			MethodMetadata metadata = buildMetadataFor(className, m.getName(),
+					m.getReturnType(), m.getArgumentTypes(),
+					canBeOverridden(null, method), false);
+			metadata = put(methods, metadata.getSignature(), metadata);
+			clazz.addMethod(metadata);
+
+			if (method.isAbstract() || method.isNative() || method.isInterface())
+				// no code, we can skip the parsing
+				continue;
+
+			for (InstructionHandle handle : method.getInstructionList())
+				if (handle.getInstruction() instanceof InvokeInstruction) {
+					InvokeInstruction invoke = (InvokeInstruction) handle.getInstruction();
+
+					AtomicBoolean unresolved = new AtomicBoolean(false);
+					MethodMetadata targetMetadata;
+					if (invoke instanceof INVOKEDYNAMIC)
+						targetMetadata = processInvokeDynamic(infos, cp, (INVOKEDYNAMIC) invoke);
+					else
+						targetMetadata = processGenericInvoke(invoke, cp, method, unresolved);
+
+					targetMetadata = put(methods, targetMetadata.getSignature(), targetMetadata);
+					targetMetadata.getCallers().add(metadata);
+					if (unresolved.get())
+						metadata.getUnresolvedCallees().add(targetMetadata);
+					else
+						metadata.getCallees().add(targetMetadata);
+				}
+		}
+
+		return skippedInfos.get();
+	}
+
+	private MethodMetadata processGenericInvoke(InvokeInstruction invoke, ConstantPoolGen cp, MethodGen method,
+			AtomicBoolean unresolved) {
+		String name = invoke.getName(cp);
+		
+		ReferenceType recType = invoke.getReferenceType(cp);
+		if (!(recType instanceof ObjectType))
+			recType = ObjectType.OBJECT;
+
+		String receiver = Utility.signatureToString(recType.getSignature(), false);
+		String sig = invoke.getSignature(cp);
+		String retStr = Utility.methodSignatureReturnType(sig, false);
+		String[] paramsStr = Utility.methodSignatureArgumentTypes(sig, false);
+
+		MethodGen target = null;
+		if (!classGens.containsKey(receiver)) {
+			put(classes, receiver, new ClassMetadata(receiver));
+			unresolved.set(true);
+			target = null;
+		} else {
+			for (Method mtd : classGens.get(receiver).getMethods())
+				if (mtd.getName().equals(name) && mtd.getSignature().equals(sig)) {
+					target = new MethodGen(mtd, receiver, cp);
+					break;
+				}
+		}
+		
+		return buildMetadataFor(receiver, name, retStr, paramsStr, canBeOverridden(invoke, target), unresolved.get());
+	}
+
+	private MethodMetadata processInvokeDynamic(List<LambdaInfo> infos, ConstantPoolGen cp, INVOKEDYNAMIC call) {
+		ConstantInvokeDynamic id = (ConstantInvokeDynamic) cp.getConstant(call.getIndex());
+		int index = id.getBootstrapMethodAttrIndex();
+		LambdaInfo info = infos.get(index);
+		String retStr = Utility.methodSignatureReturnType(info.getTargetSignature(), false);
+		String[] paramsStr = Utility.methodSignatureArgumentTypes(info.getTargetSignature(), false);
+		return buildMetadataFor(info.getTargetClass(), info.getTargetName(), retStr, paramsStr, false, false);
+	}
+
+	private MethodMetadata buildMetadataFor(String clazz, String name, org.apache.bcel.generic.Type returnType,
+			org.apache.bcel.generic.Type[] paramsTypes, boolean canBeOverriden, boolean unresolved) {
+		String ret = Utility.signatureToString(returnType.getSignature(), false);
+		String[] params = new String[paramsTypes.length];
+		for (int i = 0; i < params.length; i++)
+			params[i] = Utility.signatureToString(paramsTypes[i].getSignature(), false);
+		return buildMetadataFor(clazz, name, ret, params, canBeOverriden, unresolved);
+	}
+
+	private MethodMetadata buildMetadataFor(String clazz, String name, String returnType, String[] paramsTypes,
+			boolean canBeOverriden, boolean unresolved) {
+		ClassMetadata targetClass = classes.get(clazz);
+		Type ret = Type.convert(org.apache.bcel.generic.Type.getType(Utility.getSignature(returnType)), classes);
+		Type[] params = new Type[paramsTypes.length];
+		for (int i = 0; i < params.length; i++)
+			params[i] = Type.convert(org.apache.bcel.generic.Type.getType(Utility.getSignature(paramsTypes[i])), classes);
+		return new MethodMetadata(targetClass,
+				signature(clazz, name, paramsTypes, returnType),
+				name, ret, params, canBeOverriden, unresolved);
+	}
+
+	private boolean canBeOverridden(InvokeInstruction invoke, MethodGen method) {
+		return (invoke == null || invoke instanceof INVOKEVIRTUAL || invoke instanceof INVOKEINTERFACE)
+				&& (method == null || !(method.isStatic()
+						|| method.isFinal()
+						|| method.isPrivate()
+						|| method.getName().equals(Const.CONSTRUCTOR_NAME)
+						|| method.getName().equals(Const.STATIC_INITIALIZER_NAME)));
+	}
+
+	private static <T> T put(Map<String, T> map, String key, T target) {
+		T ret = map.putIfAbsent(key, target);
 		if (ret == null)
-			ret = targetMetadata;
+			ret = target;
 		return ret;
+	}
+
+	private void closure(MethodMetadata method) {
+		if (method.getCallers().isEmpty() || !method.canBeOverridden())
+			return;
+
+		for (MethodMetadata overriding : method.getOverriders())
+			for (MethodMetadata caller : method.getCallers())
+				overriding.getCallers().add(caller);
 	}
 
 	private final static String LAMBDA_FACTORY_CLASS = "java/lang/invoke/LambdaMetafactory";
@@ -227,13 +326,8 @@ public class CallGraphExplorer {
 		}
 	}
 
-	private static String signature(ReferenceType receiver, String name, Type[] pars, Type ret) {
-		return Utility.signatureToString(receiver.getSignature(), false) + "." + name
-				+ Type.getMethodSignature(ret, pars);
-	}
-
-	private static String signature(MethodGen method) {
-		return method.getClassName() + "." + method.getName() + method.getSignature();
+	private static String signature(String clazz, String name, String[] pars, String ret) {
+		return clazz + '.' + name + '(' + StringUtils.join(pars) + ')' + ret;
 	}
 
 	public void addJarEntries(String path) throws IOException {
@@ -247,7 +341,7 @@ public class CallGraphExplorer {
 
 			try (InputStream is = new ByteArrayInputStream(getBytes(jf.getInputStream(e)))) {
 				JavaClass clazz = new ClassParser(is, fileName).parse();
-				classes.put(clazz.getClassName(), new ClassGen(clazz));
+				classGens.put(clazz.getClassName(), new ClassGen(clazz));
 				Repository.addClass(clazz);
 			} catch (IOException | ClassFormatException ex) {
 				System.err.println("Cannot parse " + fileName + " in " + path);

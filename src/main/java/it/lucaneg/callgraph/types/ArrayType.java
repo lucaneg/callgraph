@@ -33,6 +33,11 @@ public class ArrayType implements ReferenceType {
 	}
 	
 	@Override
+	public String toChoppedString() {
+		return base.toChoppedString() + "[]".repeat(dimensions);
+	}
+	
+	@Override
 	public String toJVM() {
 		return "[".repeat(dimensions) + base.toJVM();
 	}
