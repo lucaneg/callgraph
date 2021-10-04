@@ -4,6 +4,9 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 
+import it.lucaneg.callgraph.types.BooleanType;
+import it.lucaneg.callgraph.types.ClassType;
+import it.lucaneg.callgraph.types.IntType;
 import it.lucaneg.callgraph.types.Type;
 
 public class MethodMetadata implements Comparable<MethodMetadata> {
@@ -70,10 +73,10 @@ public class MethodMetadata implements Comparable<MethodMetadata> {
 	public String[] getParams(boolean chop) {
 		String[] chopped = new String[params.length];
 		for (int i = 0; i < chopped.length; i++)
-		if (chop) 
-			chopped[i] = params[i].toChoppedString();
-		else 
-			chopped[i] = params[i].toString();
+			if (chop)
+				chopped[i] = params[i].toChoppedString();
+			else
+				chopped[i] = params[i].toString();
 		return chopped;
 	}
 
@@ -162,14 +165,14 @@ public class MethodMetadata implements Comparable<MethodMetadata> {
 	private boolean hasCompatibleSignatureForOverride(MethodMetadata other) {
 		if (!name.equals(other.name) || params.length != other.params.length)
 			return false;
-		
+
 		if (!other.ret.isAssignableTo(ret))
 			return false;
-		
+
 		for (int i = 0; i < params.length; i++)
 			if (!params[i].equals(other.params[i]))
 				return false;
-		
+
 		return true;
 	}
 
@@ -180,5 +183,38 @@ public class MethodMetadata implements Comparable<MethodMetadata> {
 				if (hasCompatibleSignatureForOverride(method))
 					result.add(method);
 		return result;
+	}
+
+	public boolean isEquals() {
+		return name.equals("equals")
+				&& ret instanceof BooleanType
+				&& params.length == 1
+				&& params[0] instanceof ClassType
+				&& ((ClassType) params[0]).getName().equals("java.lang.Object");
+	}
+
+	public boolean isHashCode() {
+		return name.equals("hashCode")
+				&& ret instanceof IntType
+				&& params.length == 0;
+	}
+
+	public boolean isCompareTo() {
+		return name.equals("compareTo")
+				&& ret instanceof BooleanType
+				&& params.length == 1
+				&& params[0] instanceof ClassType
+				&& ClassType.lookup(clazz.getName(), null).isAssignableTo((ClassType) params[0]);
+	}
+
+	public boolean isToString() {
+		return name.equals("toString")
+				&& ret instanceof ClassType
+				&& ((ClassType) ret).getName().equals("java.lang.String")
+				&& params.length == 0;
+	}
+
+	public boolean isStandard() {
+		return isEquals() || isHashCode() || isToString() || isCompareTo();
 	}
 }

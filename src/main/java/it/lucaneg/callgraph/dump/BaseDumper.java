@@ -9,6 +9,8 @@ import java.util.Set;
 import java.util.Stack;
 import java.util.TreeSet;
 
+import org.apache.commons.lang3.StringUtils;
+
 import it.lucaneg.callgraph.CallGraphExplorer;
 import it.lucaneg.callgraph.model.MethodMetadata;
 
@@ -33,7 +35,7 @@ public abstract class BaseDumper {
 				else
 					workingSet.push(entry);
 	}
-	
+
 	protected abstract Graph getGraph();
 
 	protected abstract String getGraphExtension();
@@ -44,10 +46,35 @@ public abstract class BaseDumper {
 		Set<MethodMetadata> done = new HashSet<>();
 
 		if (!isolated.isEmpty()) {
-			System.out.println("The following methods will not be dumped to the graph "
-					+ "since they are isolated (no explicit callers nor callees):");
-			for (MethodMetadata method : isolated)
-				System.out.println("- " + method.getReadableSignature(chop));
+			Set<String> unreachable = new HashSet<>();
+			Set<String> classInit = new HashSet<>();
+			Set<String> standard = new HashSet<>();
+
+			for (MethodMetadata method : isolated) {
+				String sig = method.getReadableSignature(chop);
+				if (method.isStandard())
+					standard.add(sig);
+				else if (method.isClassConstructor())
+					classInit.add(sig);
+				else
+					unreachable.add(sig);
+			}
+
+			System.out.println("The following will not be dumped since they have no explicit callers nor callees:");
+			if (!unreachable.isEmpty()) {
+				System.out.println("Methods of the application:");
+				System.out.println("- " + StringUtils.join(unreachable, "\n- "));
+			}
+
+			if (!standard.isEmpty()) {
+				System.out.println("Standard methods (equals, hashCode, toString, compareTo):");
+				System.out.println("- " + StringUtils.join(standard, "\n- "));
+			}
+
+			if (!classInit.isEmpty()) {
+				System.out.println("Class initializers:");
+				System.out.println("- " + StringUtils.join(classInit, "\n- "));
+			}
 		}
 
 		while (!workingSet.isEmpty()) {
